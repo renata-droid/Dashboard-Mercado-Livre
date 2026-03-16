@@ -1,6 +1,6 @@
 streamlit
 pandas
 plotly
-requests>=2.31.0
+requests
 openpyxl
 xlsxwriter
