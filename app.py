@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import subprocess
 import os
 from datetime import datetime, timedelta
+from pipeline_meli import pipeline
 
 # CONFIG
 
@@ -119,49 +119,15 @@ else:
 
         st.info("Iniciando processamento...")
 
-        log_area = st.empty()
+        pipeline(data_inicial.strftime("%Y-%m-%d"))
 
-        cmd = [
-            "python",
-            "pipeline_meli.py",
-            data_inicial.strftime("%Y-%m-%d"),
-            data_final.strftime("%Y-%m-%d")
-        ]
+        st.success("Processamento finalizado")
 
-        processo = subprocess.Popen(
-            cmd,
-            cwd=BASE_DIR,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True
-        )
+        st.cache_data.clear()
 
-        logs = []
+        st.rerun()
 
-        while True:
-
-            linha = processo.stdout.readline()
-
-            if not linha and processo.poll() is not None:
-                break
-
-            if linha:
-                logs.append(linha.strip())
-                log_area.code("\n".join(logs[-15:]))
-
-        retorno = processo.poll()
-
-        if retorno == 0:
-
-            st.success("Processamento finalizado")
-
-            st.cache_data.clear()
-
-            st.rerun()
-
-        else:
-
-            st.error("Erro durante processamento")
+        
 
     st.divider()
 
