@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import os
 import time
 from auth import renovar_token
+from merge_ads_financeiro import main as merge_ads
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "data", "consolidado")
@@ -187,6 +188,12 @@ def pipeline(data):
     df.to_excel(output, index=False)
 
     print("arquivo gerado:", output)
+
+    print("executando merge final...")
+
+    merge_ads(data)
+
+    print("merge concluído")
 
 
 if __name__ == "__main__":
