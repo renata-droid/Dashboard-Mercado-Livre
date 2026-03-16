@@ -210,6 +210,12 @@ else:
             textposition='outside'
         )
 
+        fig.update_layout(
+            plot_bgcolor="#020617",
+            paper_bgcolor="#020617",
+            font=dict(color="white")
+        )
+
         st.plotly_chart(fig, use_container_width=True)
 
         # TOP 10 PRODUTOS POR RECEITA
@@ -236,6 +242,12 @@ else:
             textposition='outside'
         )
 
+        fig.update_layout(
+            plot_bgcolor="#020617",
+            paper_bgcolor="#020617",
+            font=dict(color="white")
+        )
+
         st.plotly_chart(fig2, use_container_width=True)
 
         # CURVA PARETO
@@ -254,6 +266,13 @@ else:
             y="receita",
             title="Pareto de Produtos (80/20)",
             color_discrete_sequence=["#7c3aed"]
+        )
+
+
+        fig.update_layout(
+            plot_bgcolor="#020617",
+            paper_bgcolor="#020617",
+            font=dict(color="white")
         )
 
         st.plotly_chart(fig3, use_container_width=True)
