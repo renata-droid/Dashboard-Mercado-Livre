@@ -3,3 +3,4 @@ pandas
 plotly
 requests>=2.31.0
 openpyxl
+xlsxwriter
