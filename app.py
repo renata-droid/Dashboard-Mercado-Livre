@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import subprocess
 import os
 from datetime import datetime, timedelta
-from pipeline_meli import pipeline
 
 # CONFIG
 
@@ -119,13 +119,49 @@ else:
 
         st.info("Iniciando processamento...")
 
-        pipeline(data_inicial.strftime("%Y-%m-%d"))
+        log_area = st.empty()
 
-        st.success("Processamento finalizado")
+        cmd = [
+            "python",
+            "pipeline_meli.py",
+            data_inicial.strftime("%Y-%m-%d"),
+            data_final.strftime("%Y-%m-%d")
+        ]
 
-        st.cache_data.clear()
+        processo = subprocess.Popen(
+            cmd,
+            cwd=BASE_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
 
-        st.rerun()
+        logs = []
+
+        while True:
+
+            linha = processo.stdout.readline()
+
+            if not linha and processo.poll() is not None:
+                break
+
+            if linha:
+                logs.append(linha.strip())
+                log_area.code("\n".join(logs[-15:]))
+
+        retorno = processo.poll()
+
+        if retorno == 0:
+
+            st.success("Processamento finalizado")
+
+            st.cache_data.clear()
+
+            st.rerun()
+
+        else:
+
+            st.error("Erro durante processamento")
 
     st.divider()
 
@@ -139,7 +175,7 @@ else:
             BASE_DIR,
             "data",
             "consolidado",
-            f"consolidado_{data_atual.strftime('%Y-%m-%d')}.xlsx"
+            f"consolidado_{data_atual}.xlsx"
         )
 
         if os.path.exists(arquivo):
@@ -208,12 +244,6 @@ else:
             textposition='outside'
         )
 
-        fig.update_layout(
-            plot_bgcolor="#020617",
-            paper_bgcolor="#020617",
-            font=dict(color="white")
-        )
-
         st.plotly_chart(fig, use_container_width=True)
 
         # TOP 10 PRODUTOS POR RECEITA
@@ -240,12 +270,6 @@ else:
             textposition='outside'
         )
 
-        fig2.update_layout(
-            plot_bgcolor="#020617",
-            paper_bgcolor="#020617",
-            font=dict(color="white")
-        )
-
         st.plotly_chart(fig2, use_container_width=True)
 
         # CURVA PARETO
@@ -264,12 +288,6 @@ else:
             y="receita",
             title="Pareto de Produtos (80/20)",
             color_discrete_sequence=["#7c3aed"]
-        )
-
-        fig3.update_layout(
-            plot_bgcolor="#020617",
-            paper_bgcolor="#020617",
-            font=dict(color="white")
         )
 
         st.plotly_chart(fig3, use_container_width=True)
@@ -297,46 +315,11 @@ else:
 
         abc["classe"] = abc["pct_acum"].apply(classe)
 
-        st.dataframe(
-            abc.head(30).style.set_properties(**{
-                "background-color": "#020617",
-                "color": "white",
-                "border-color": "#374151"
-            }),
-            use_container_width=True
-        )
+        st.dataframe(abc.head(30))
 
     else:
 
         st.warning("Nenhum relatório encontrado. Execute o processamento.")
-
-    # EXPORTAR EXCEL
-
-    st.divider()
-    st.subheader("Exportar Excel Consolidado")
-
-    data_export = data_inicial.strftime("%Y-%m-%d")
-
-    arquivo_export = os.path.join(
-        BASE_DIR,
-        "data",
-        "consolidado",
-        f"consolidado_{data_export}.xlsx"
-    )
-
-    if os.path.exists(arquivo_export):
-
-        with open(arquivo_export, "rb") as file:
-
-            st.download_button(
-                label="Baixar Excel Consolidado",
-                data=file,
-                file_name=f"consolidado_{data_export}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-
-    else:
-        st.warning("Arquivo consolidado ainda não foi gerado.")
 
     st.divider()
 
