@@ -138,7 +138,7 @@ else:
         arquivo = os.path.join(
             BASE_DIR,
             "data",
-            "consolidado_diario",
+            "consolidado",
             f"consolidado_{data_atual.strftime('%Y-%m-%d')}.xlsx"
         )
 
@@ -320,7 +320,7 @@ else:
     arquivo_export = os.path.join(
         BASE_DIR,
         "data",
-        "consolidado_diario",
+        "consolidado",
         f"consolidado_{data_export}.xlsx"
     )
 
