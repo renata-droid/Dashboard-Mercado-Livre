@@ -8,17 +8,22 @@ from auth import renovar_token
 from merge_ads_financeiro import main as merge_ads
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 OUTPUT_DIR = os.path.join(BASE_DIR, "data", "consolidado")
+ADS_DIR = os.path.join(BASE_DIR, "data", "ads")
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(ADS_DIR, exist_ok=True)
 
 SELLER_ID = 1087616640
 
 BASE_SEARCH_URL = "https://api.mercadolibre.com/orders/search"
 BASE_ORDER_URL = "https://api.mercadolibre.com/orders/{order_id}"
 BASE_PAYMENT_URL = "https://api.mercadopago.com/v1/payments/{payment_id}"
-BASE_BILLING_URL = "https://api.mercadolibre.com/billing/integration/group/ML/order/details"
 BASE_SHIPMENT_COSTS_URL = "https://api.mercadolibre.com/shipments/{shipment_id}/costs"
+
+# endpoint Ads
+BASE_ADS_URL = f"https://api.mercadolibre.com/advertising/advertisers/{SELLER_ID}/product_ads"
 
 LIMIT = 50
 MAX_WORKERS = 10
@@ -140,6 +145,29 @@ def buscar_frete(session, shipment_id, token):
     return sender.get("cost") or 0
 
 
+# NOVO — buscar ads
+def buscar_ads(session, token):
+
+    print("buscando ads...")
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+    r = request_retry(session, BASE_ADS_URL, headers=headers)
+
+    results = r.json().get("results", [])
+
+    linhas = []
+
+    for ad in results:
+
+        linhas.append({
+            "item_id": ad.get("item_id"),
+            "cost": ad.get("cost", 0)
+        })
+
+    return pd.DataFrame(linhas)
+
+
 def pipeline(data):
 
     token = renovar_token()
@@ -183,11 +211,21 @@ def pipeline(data):
 
     df["frete_pago_vendedor"] = df["shipment_id"].map(fretes)
 
+    # salvar consolidado base
     output = os.path.join(OUTPUT_DIR, f"consolidado_{data}.xlsx")
 
     df.to_excel(output, index=False)
 
     print("arquivo gerado:", output)
+
+    # buscar ads
+    df_ads = buscar_ads(session, token)
+
+    ads_file = os.path.join(ADS_DIR, f"relatorio_{data}.xlsx")
+
+    df_ads.to_excel(ads_file, index=False)
+
+    print("arquivo ads gerado:", ads_file)
 
     print("executando merge final...")
 

@@ -12,27 +12,22 @@ os.makedirs(PASTA_CONSOLIDADO_DIARIO, exist_ok=True)
 
 def main(DATA_BASE):
 
-    FINANCEIRO_FILE = os.path.join(PASTA_FINANCEIRO, f"financeiro_{DATA_BASE}.xlsx")
-    ADS_FILE = os.path.join(PASTA_ADS, f"relatorio_{DATA_BASE}.xlsx")
     OUTPUT_FILE = os.path.join(PASTA_CONSOLIDADO_DIARIO, f"consolidado_{DATA_BASE}.xlsx")
 
-    print(" Lendo financeiro...")
-    df_fin = pd.read_excel(
-     FINANCEIRO_FILE,
-     dtype={
-        "pack_id": str,
-        "order_id": str,
-        "item_id": str
-    }
-)
+    VENDAS_FILE = os.path.join(
+        BASE_DIR,
+        "data",
+        "consolidado",
+        f"consolidado_{DATA_BASE}.xlsx"
+    )
 
+    print("Lendo vendas do pipeline...")
+    df_fin = pd.read_excel(VENDAS_FILE)
 
-    print(" Lendo ads...")
-    df_ads = pd.read_excel(ADS_FILE)
 
     # Garantir tipos corretos
     df_fin["item_id"] = df_fin["item_id"].astype(str)
-    df_ads["item_id"] = df_ads["item_id"].astype(str)
+    df_ads = pd.DataFrame(columns=["item_id", "ads_unitario"])
 
     # =============================
     # PASSO 1 — TOTAL VENDIDO POR ITEM
@@ -63,13 +58,6 @@ def main(DATA_BASE):
     # =============================
 
     df_ads_merge["ads_unitario"] = 0.0
-
-    mask = df_ads_merge["total_quantity_dia"] > 0
-
-    df_ads_merge.loc[mask, "ads_unitario"] = (
-        df_ads_merge.loc[mask, "cost"] /
-        df_ads_merge.loc[mask, "total_quantity_dia"]
-    )
 
     # =============================
     # PASSO 4 — MERGE FINAL COM FINANCEIRO
