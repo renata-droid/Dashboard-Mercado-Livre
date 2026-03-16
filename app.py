@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import subprocess
 import os
 from datetime import datetime, timedelta
+from pipeline_meli import pipeline
 
 # CONFIG
 
@@ -119,49 +119,15 @@ else:
 
         st.info("Iniciando processamento...")
 
-        log_area = st.empty()
+        pipeline(data_inicial.strftime("%Y-%m-%d"))
 
-        cmd = [
-            "python",
-            "pipeline_meli.py",
-            data_inicial.strftime("%Y-%m-%d"),
-            data_final.strftime("%Y-%m-%d")
-        ]
+        st.success("Processamento finalizado")
 
-        processo = subprocess.Popen(
-            cmd,
-            cwd=BASE_DIR,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True
-        )
+        st.cache_data.clear()
 
-        logs = []
+        st.rerun()
 
-        while True:
-
-            linha = processo.stdout.readline()
-
-            if not linha and processo.poll() is not None:
-                break
-
-            if linha:
-                logs.append(linha.strip())
-                log_area.code("\n".join(logs[-15:]))
-
-        retorno = processo.poll()
-
-        if retorno == 0:
-
-            st.success("Processamento finalizado")
-
-            st.cache_data.clear()
-
-            st.rerun()
-
-        else:
-
-            st.error("Erro durante processamento")
+        
 
     st.divider()
 
@@ -244,6 +210,12 @@ else:
             textposition='outside'
         )
 
+        fig.update_layout(
+            plot_bgcolor="#020617",
+            paper_bgcolor="#020617",
+            font=dict(color="white")
+        )
+
         st.plotly_chart(fig, use_container_width=True)
 
         # TOP 10 PRODUTOS POR RECEITA
@@ -270,6 +242,12 @@ else:
             textposition='outside'
         )
 
+        fig2.update_layout(
+            plot_bgcolor="#020617",
+            paper_bgcolor="#020617",
+            font=dict(color="white")
+        )
+
         st.plotly_chart(fig2, use_container_width=True)
 
         # CURVA PARETO
@@ -288,6 +266,13 @@ else:
             y="receita",
             title="Pareto de Produtos (80/20)",
             color_discrete_sequence=["#7c3aed"]
+        )
+
+
+        fig3.update_layout(
+            plot_bgcolor="#020617",
+            paper_bgcolor="#020617",
+            font=dict(color="white")
         )
 
         st.plotly_chart(fig3, use_container_width=True)
@@ -315,7 +300,14 @@ else:
 
         abc["classe"] = abc["pct_acum"].apply(classe)
 
-        st.dataframe(abc.head(30))
+        st.dataframe(
+            abc.head(30).style.set_properties(**{
+                "background-color": "#020617",
+                "color": "white",
+                "border-color": "#374151"
+            }),
+            use_container_width=True
+        )
 
     else:
 
