@@ -127,8 +127,6 @@ else:
 
         st.rerun()
 
-        
-
     st.divider()
 
     dfs = []
@@ -140,7 +138,7 @@ else:
         arquivo = os.path.join(
             BASE_DIR,
             "data",
-            "consolidado",
+            "consolidado_diario",
             f"consolidado_{data_atual}.xlsx"
         )
 
@@ -242,7 +240,7 @@ else:
             textposition='outside'
         )
 
-        fig.update_layout(
+        fig2.update_layout(
             plot_bgcolor="#020617",
             paper_bgcolor="#020617",
             font=dict(color="white")
@@ -268,8 +266,7 @@ else:
             color_discrete_sequence=["#7c3aed"]
         )
 
-
-        fig.update_layout(
+        fig3.update_layout(
             plot_bgcolor="#020617",
             paper_bgcolor="#020617",
             font=dict(color="white")
@@ -300,11 +297,46 @@ else:
 
         abc["classe"] = abc["pct_acum"].apply(classe)
 
-        st.dataframe(abc.head(30))
+        st.dataframe(
+            abc.head(30).style.set_properties(**{
+                "background-color": "#020617",
+                "color": "white",
+                "border-color": "#374151"
+            }),
+            use_container_width=True
+        )
 
     else:
 
         st.warning("Nenhum relatório encontrado. Execute o processamento.")
+
+    # EXPORTAR EXCEL
+
+    st.divider()
+    st.subheader("Exportar Excel Consolidado")
+
+    data_export = data_inicial.strftime("%Y-%m-%d")
+
+    arquivo_export = os.path.join(
+        BASE_DIR,
+        "data",
+        "consolidado_diario",
+        f"consolidado_{data_export}.xlsx"
+    )
+
+    if os.path.exists(arquivo_export):
+
+        with open(arquivo_export, "rb") as file:
+
+            st.download_button(
+                label="Baixar Excel Consolidado",
+                data=file,
+                file_name=f"consolidado_{data_export}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    else:
+        st.warning("Arquivo consolidado ainda não foi gerado.")
 
     st.divider()
 
