@@ -231,14 +231,14 @@ else:
         receita_pedido = df.groupby("order_id")["receita"].sum().mean()
         
         # Produto mais vendido
-        if len(df) > 0:
-            produto_mais_vendido = (
-                df.groupby("item_id")["quantity"]
-                .sum()
-                .sort_values(ascending=False)
-                .index[0] if len(df) > 0 else "N/A"
-            )
-        else:
+        produto_mais_vendido = "N/A"
+        try:
+            if len(df) > 0 and "item_id" in df.columns:
+                vendas_por_produto = df.groupby("item_id")["quantity"].sum()
+                if len(vendas_por_produto) > 0:
+                    produto_mais_vendido = vendas_por_produto.idxmax()
+        except Exception as e:
+            print(f"Erro ao calcular produto mais vendido: {e}")
             produto_mais_vendido = "N/A"
         
         top10 = receita_produto.sort_values(ascending=False).head(10).sum()
