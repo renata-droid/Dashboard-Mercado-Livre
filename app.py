@@ -1,13 +1,11 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import os
 from datetime import datetime, timedelta
-from pipeline_meli import pipeline
+from pipeline_consolidado import gerar_consolidado
+import io
 
 st.set_page_config(page_title="Dashboard Mercado Livre", layout="wide")
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 st.markdown("""
 <style>
@@ -29,6 +27,7 @@ h1, h2, h3 {
 }
 [data-testid="stMetricValue"] {
     color: #a855f7;
+    font-size: 28px;
 }
 hr {
     border-color: #374151;
@@ -36,140 +35,122 @@ hr {
 </style>
 """, unsafe_allow_html=True)
 
-col_logo, col_title = st.columns([1,6])
-with col_logo:
-    logo_path = os.path.join(BASE_DIR, "mercadolivre_logo.png")
-    if os.path.exists(logo_path):
-        st.image(logo_path, width=260)
-
-with col_title:
-    st.markdown("<h1 style='margin-top:10px;'>Dashboard Mercado Livre</h1>", unsafe_allow_html=True)
-
-st.divider()
-
-# CACHE
-@st.cache_data
-def carregar_consolidado(caminho):
-    return pd.read_excel(caminho)
+st.title("📊 Dashboard Mercado Livre")
 
 # LOGIN
-USERS = {
-    "admin": "123",
-    "gestor": "123"
-}
+USERS = {"admin": "123", "gestor": "123"}
 
 if "logado" not in st.session_state:
     st.session_state.logado = False
+if "consolidado_data" not in st.session_state:
+    st.session_state.consolidado_data = None
 
 if not st.session_state.logado:
-    st.subheader("Login")
-    usuario = st.text_input("Usuário")
-    senha = st.text_input("Senha", type="password")
-
-    if st.button("Entrar"):
-        if usuario in USERS and USERS[usuario] == senha:
-            st.session_state.logado = True
-            st.rerun()
-        else:
-            st.error("Usuário ou senha inválidos")
+    st.subheader("🔐 Login")
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        usuario = st.text_input("Usuário", key="user_input")
+        senha = st.text_input("Senha", type="password", key="pass_input")
+        
+        if st.button("Entrar", use_container_width=True):
+            if usuario in USERS and USERS[usuario] == senha:
+                st.session_state.logado = True
+                st.rerun()
+            else:
+                st.error("❌ Usuário ou senha inválidos")
 
 else:
-    # Logout
+    # LOGOUT
     col_spacer, col_logout = st.columns([10, 1])
     with col_logout:
-        if st.button("Logout"):
+        if st.button("Logout", use_container_width=True):
             st.session_state.logado = False
             st.cache_data.clear()
             st.rerun()
-
+    
     st.divider()
-
-    # Período
+    
+    # SELEÇÃO DE PERÍODO
     ontem = datetime.today() - timedelta(days=1)
-    data_inicial, data_final = st.date_input("Período", value=(ontem, ontem))
-
+    data_selecionada = st.date_input(
+        "📅 Selecione uma data para processar",
+        value=ontem,
+        key="data_input"
+    )
+    
     st.divider()
-
-    # Botão de processamento
-    if st.button("Executar Processamento", use_container_width=True):
-        with st.spinner("⏳ Processando..."):
-            try:
-                data_atual = data_inicial
-                while data_atual <= data_final:
-                    pipeline(data_atual.strftime("%Y-%m-%d"))
-                    data_atual += timedelta(days=1)
-                st.cache_data.clear()
-                st.success("✅ Processamento concluído!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro: {str(e)}")
-
+    
+    # BOTÃO PROCESSAR
+    col1, col2 = st.columns([2, 3])
+    
+    with col1:
+        if st.button("▶️ PROCESSAR", use_container_width=True, key="btn_processar"):
+            with st.spinner("⏳ Gerando consolidado..."):
+                try:
+                    data_str = data_selecionada.strftime("%Y-%m-%d")
+                    df_consolidado = gerar_consolidado(data_str)
+                    
+                    if df_consolidado is not None:
+                        st.session_state.consolidado_data = df_consolidado
+                        st.success(f"✅ Consolidado gerado para {data_str}!")
+                    else:
+                        st.error("❌ Nenhum dado encontrado para essa data")
+                
+                except Exception as e:
+                    st.error(f"❌ Erro: {str(e)}")
+    
     st.divider()
-
-    # Carregar dados
-    dfs = []
-    data_atual = data_inicial
-
-    while data_atual <= data_final:
-        arquivo = os.path.join(
-            BASE_DIR, "data", "consolidado",
-            f"consolidado_{data_atual.strftime('%Y-%m-%d')}.xlsx"
-        )
-
-        if os.path.exists(arquivo):
-            df_temp = carregar_consolidado(arquivo)
-            if df_temp is not None:
-                dfs.append(df_temp)
-
-        data_atual += timedelta(days=1)
-
-    # Dashboard
-    if dfs:
-        df = pd.concat(dfs, ignore_index=True)
-        df["sale_date"] = pd.to_datetime(df["sale_date"])
-
-        # KPIs
-        faturamento = (df["quantity"] * df["unit_price"]).sum()
-        margem_total = df["margem"].sum()
+    
+    # EXIBIR DADOS SE HOUVER
+    if st.session_state.consolidado_data is not None:
+        df = st.session_state.consolidado_data
+        
+        # BIG NUMBERS
+        st.subheader("📈 Resumo do Período")
+        
+        valor_bruto = df["valor_bruto_item"].sum()
+        valor_liquido = df["valor_liquido"].sum()
         pedidos = df["order_id"].nunique()
-        ticket = faturamento / pedidos if pedidos > 0 else 0
-        margem_pct_media = df["margem_pct"].mean()
-
+        tickets = df.groupby("order_id")["valor_bruto_item"].sum().mean()
+        margem_pct = (valor_liquido / valor_bruto * 100) if valor_bruto > 0 else 0
+        
         col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Faturamento", f"R$ {faturamento:,.2f}")
-        col2.metric("Margem", f"R$ {margem_total:,.2f}")
-        col3.metric("Pedidos", int(pedidos))
-        col4.metric("Ticket Médio", f"R$ {ticket:,.2f}")
-        col5.metric("Margem %", f"{margem_pct_media:.1f}%")
-
+        
+        col1.metric("💰 Faturamento Bruto", f"R$ {valor_bruto:,.2f}")
+        col2.metric("💵 Faturamento Líquido", f"R$ {valor_liquido:,.2f}")
+        col3.metric("📦 Pedidos", int(pedidos))
+        col4.metric("🎯 Ticket Médio", f"R$ {tickets:,.2f}")
+        col5.metric("📊 Margem %", f"{margem_pct:.1f}%")
+        
         st.divider()
-
-        # Gráfico: Faturamento por dia
-        vendas_dia = df.groupby(df["sale_date"].dt.date).agg({
-            "quantity": "sum",
-            "unit_price": lambda x: (x * df.loc[x.index, "quantity"]).sum() / df.loc[x.index, "quantity"].sum() if df.loc[x.index, "quantity"].sum() > 0 else 0,
-            "margem": "sum"
-        }).reset_index()
-        vendas_dia.columns = ["data", "quantidade", "preco_medio", "margem"]
-        vendas_dia["faturamento"] = vendas_dia["quantidade"] * vendas_dia["preco_medio"]
-
-        fig1 = px.bar(vendas_dia, x="data", y="faturamento", text="faturamento",
-                     title="Faturamento por Dia", color_discrete_sequence=["#7c3aed"])
-        fig1.update_traces(texttemplate='R$ %{text:,.0f}', textposition='outside')
-        fig1.update_layout(plot_bgcolor="#020617", paper_bgcolor="#020617", font=dict(color="white"))
-        st.plotly_chart(fig1, use_container_width=True)
-
-        # Gráfico: Top 10 produtos
-        top_produtos = df.groupby("item_id")["margem"].sum().sort_values(ascending=False).head(10).reset_index()
-        fig2 = px.bar(top_produtos, x="item_id", y="margem", text="margem",
-                     title="Top 10 Produtos por Margem", color_discrete_sequence=["#7c3aed"])
-        fig2.update_traces(texttemplate='R$ %{text:,.0f}', textposition='outside')
-        fig2.update_layout(plot_bgcolor="#020617", paper_bgcolor="#020617", font=dict(color="white"))
-        st.plotly_chart(fig2, use_container_width=True)
-
-        # Tabela de dados
-        st.subheader("Dados Completos")
-        st.dataframe(df, use_container_width=True, height=500)
-
+        
+        # BOTÃO DOWNLOAD
+        st.subheader("⬇️ Exportar Consolidado")
+        
+        # Converter para Excel em memória
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Consolidado')
+        
+        output.seek(0)
+        
+        data_str = data_selecionada.strftime("%Y-%m-%d")
+        
+        st.download_button(
+            label="📥 Baixar Consolidado (XLSX)",
+            data=output.getvalue(),
+            file_name=f"consolidado_{data_str}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+        
+        st.divider()
+        
+        # TABELA (OPCIONAL)
+        if st.checkbox("Exibir tabela completa"):
+            st.subheader("📋 Dados Completos")
+            st.dataframe(df, use_container_width=True, height=500)
+    
     else:
-        st.warning("Nenhum relatório encontrado. Execute o processamento.")
+        st.info("👆 Selecione uma data e clique em PROCESSAR para gerar o consolidado")
