@@ -1,5 +1,6 @@
 import requests
 import pandas as pd
+import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 import os
@@ -294,6 +295,17 @@ def pipeline(data):
         return
 
     df = pd.DataFrame(linhas)
+    
+    # Garantir tipos corretos
+    colunas_float = [
+        "unit_price", "quantity", "valor_bruto_item", "discount_real",
+        "sale_fee_net", "sale_fee_bruta", "sale_fee_rebate", "charge_amount",
+        "frete_regra_calculada"
+    ]
+    
+    for col in colunas_float:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
     # Buscar fretes
     print("buscando fretes...")
@@ -308,30 +320,41 @@ def pipeline(data):
         for f in as_completed(futures):
             fretes[futures[f]] = f.result()
 
-    df["frete_regra_calculada"] = df["shipment_id"].map(fretes).fillna(0)
+    df["frete_regra_calculada"] = df["shipment_id"].map(fretes).fillna(0).astype(float)
 
     # Buscar ADS
     print("buscando ads...")
     item_ids = df["item_id"].unique()
     ads_map = buscar_ads(session, item_ids, data, token)
-    df["ads_total_item"] = df["item_id"].map(ads_map).fillna(0)
+    df["ads_total_item"] = df["item_id"].map(ads_map).fillna(0).astype(float)
 
-    # Calcular rateio de ads
-    total_qtd_por_item = df.groupby("item_id")["quantity"].transform("sum")
-    df["ads_unitario"] = df.apply(
-        lambda row: row["ads_total_item"] / row["quantity"] if row["quantity"] > 0 else 0,
-        axis=1
+    # Calcular rateio de ads - sem comparações ambíguas
+    df["quantity"] = df["quantity"].fillna(0).astype(float)
+    df["ads_total_item"] = df["ads_total_item"].fillna(0).astype(float)
+    
+    # Evitar divisão por zero com numpy
+    df["ads_unitario"] = np.where(
+        df["quantity"] > 0,
+        df["ads_total_item"] / df["quantity"],
+        0
     )
     df["ads_rateado"] = df["ads_unitario"] * df["quantity"]
 
-    # Calcular valor líquido
+    # Calcular valor líquido com conversões explícitas
+    df["valor_bruto_item"] = pd.to_numeric(df["valor_bruto_item"], errors="coerce").fillna(0)
+    df["discount_real"] = pd.to_numeric(df["discount_real"], errors="coerce").fillna(0)
+    df["sale_fee_net"] = pd.to_numeric(df["sale_fee_net"], errors="coerce").fillna(0)
+    df["sale_fee_rebate"] = pd.to_numeric(df["sale_fee_rebate"], errors="coerce").fillna(0)
+    df["frete_regra_calculada"] = pd.to_numeric(df["frete_regra_calculada"], errors="coerce").fillna(0)
+    df["ads_rateado"] = pd.to_numeric(df["ads_rateado"], errors="coerce").fillna(0)
+    
     df["valor_liquido"] = (
-        df["valor_bruto_item"]
-        - df["discount_real"]
-        - df["sale_fee_net"]
-        - df["sale_fee_rebate"]
-        - df["frete_regra_calculada"]
-        - df["ads_rateado"]
+        df["valor_bruto_item"].astype(float)
+        - df["discount_real"].astype(float)
+        - df["sale_fee_net"].astype(float)
+        - df["sale_fee_rebate"].astype(float)
+        - df["frete_regra_calculada"].astype(float)
+        - df["ads_rateado"].astype(float)
     )
 
     # Remover coluna temporária
