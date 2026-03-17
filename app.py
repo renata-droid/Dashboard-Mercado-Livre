@@ -155,15 +155,21 @@ else:
         df["sale_date"] = pd.to_datetime(df["sale_date"])
 
         # Usar valor_liquido se existir, senão calcular receita simples
-        if "valor_liquido" in df.columns:
-            faturamento = df["valor_liquido"].sum()
-            receita_produto = df.groupby("item_id")["valor_liquido"].sum()
-            receita_pedido = df.groupby("order_id")["valor_liquido"].sum().mean()
-        else:
-            df["receita"] = df["unit_price"] * df["quantity"]
-            faturamento = df["receita"].sum()
-            receita_produto = df.groupby("item_id")["receita"].sum()
-            receita_pedido = df.groupby("order_id")["receita"].sum().mean()
+        try:
+            if "valor_liquido" in df.columns and len(df) > 0:
+                faturamento = float(df["valor_liquido"].sum())
+                receita_produto = df.groupby("item_id")["valor_liquido"].sum()
+                receita_pedido = float(df.groupby("order_id")["valor_liquido"].sum().mean())
+            else:
+                df["receita"] = df["unit_price"] * df["quantity"]
+                faturamento = float(df["receita"].sum())
+                receita_produto = df.groupby("item_id")["receita"].sum()
+                receita_pedido = float(df.groupby("order_id")["receita"].sum().mean())
+        except Exception as e:
+            print(f"Erro ao calcular métricas: {e}")
+            faturamento = 0
+            receita_produto = pd.Series()
+            receita_pedido = 0
 
         pedidos = df["order_id"].nunique()
 
@@ -198,163 +204,181 @@ else:
         
         with col_status:
             st.subheader("Status dos Pedidos")
-            if "status_gerencial" in df.columns:
-                status_count = df["status_gerencial"].value_counts()
-                fig_status = px.pie(
-                    values=status_count.values,
-                    names=status_count.index,
-                    title="Distribuição por Status"
-                )
-                fig_status.update_layout(
-                    plot_bgcolor="#020617",
-                    paper_bgcolor="#020617",
-                    font=dict(color="white")
-                )
-                st.plotly_chart(fig_status, use_container_width=True)
+            try:
+                if "status_gerencial" in df.columns:
+                    status_count = df["status_gerencial"].value_counts()
+                    fig_status = px.pie(
+                        values=status_count.values,
+                        names=status_count.index,
+                        title="Distribuição por Status"
+                    )
+                    fig_status.update_layout(
+                        plot_bgcolor="#020617",
+                        paper_bgcolor="#020617",
+                        font=dict(color="white")
+                    )
+                    st.plotly_chart(fig_status, use_container_width=True)
+            except Exception as e:
+                st.warning(f"Não foi possível carregar status")
         
         with col_margin:
             st.subheader("Análise de Custos")
-            if all(col in df.columns for col in ["sale_fee_net", "frete_regra_calculada", "ads_rateado"]):
-                custos_totais = {
-                    "Taxa ML": df["sale_fee_net"].sum(),
-                    "Frete": df["frete_regra_calculada"].sum(),
-                    "Ads": df["ads_rateado"].sum()
-                }
-                fig_custos = px.bar(
-                    x=list(custos_totais.keys()),
-                    y=list(custos_totais.values()),
-                    title="Total de Custos",
-                    color_discrete_sequence=["#7c3aed"]
-                )
-                fig_custos.update_layout(
-                    plot_bgcolor="#020617",
-                    paper_bgcolor="#020617",
-                    font=dict(color="white"),
-                    xaxis_title="Tipo de Custo",
-                    yaxis_title="Valor (R$)"
-                )
-                st.plotly_chart(fig_custos, use_container_width=True)
+            try:
+                if all(col in df.columns for col in ["sale_fee_net", "frete_regra_calculada", "ads_rateado"]):
+                    custos_totais = {
+                        "Taxa ML": float(df["sale_fee_net"].sum()),
+                        "Frete": float(df["frete_regra_calculada"].sum()),
+                        "Ads": float(df["ads_rateado"].sum())
+                    }
+                    fig_custos = px.bar(
+                        x=list(custos_totais.keys()),
+                        y=list(custos_totais.values()),
+                        title="Total de Custos",
+                        color_discrete_sequence=["#7c3aed"]
+                    )
+                    fig_custos.update_layout(
+                        plot_bgcolor="#020617",
+                        paper_bgcolor="#020617",
+                        font=dict(color="white"),
+                        xaxis_title="Tipo de Custo",
+                        yaxis_title="Valor (R$)"
+                    )
+                    st.plotly_chart(fig_custos, use_container_width=True)
+            except Exception as e:
+                st.warning(f"Não foi possível carregar análise de custos")
 
         st.divider()
         
         # FATURAMENTO POR DIA
-        if "valor_liquido" in df.columns:
-            vendas_dia = (
-                df.groupby(df["sale_date"].dt.date)["valor_liquido"]
-                .sum()
-                .reset_index()
+        try:
+            if "valor_liquido" in df.columns:
+                vendas_dia = (
+                    df.groupby(df["sale_date"].dt.date)["valor_liquido"]
+                    .sum()
+                    .reset_index()
+                )
+                vendas_dia.columns = ["data", "valor"]
+            else:
+                vendas_dia = (
+                    df.groupby(df["sale_date"].dt.date)["receita"]
+                    .sum()
+                    .reset_index()
+                )
+                vendas_dia.columns = ["data", "valor"]
+
+            fig = px.bar(
+                vendas_dia,
+                x="data",
+                y="valor",
+                text="valor",
+                title="Faturamento por Dia",
+                color_discrete_sequence=["#7c3aed"]
             )
-            vendas_dia.columns = ["data", "valor"]
-        else:
-            vendas_dia = (
-                df.groupby(df["sale_date"].dt.date)["receita"]
-                .sum()
-                .reset_index()
+
+            fig.update_traces(
+                texttemplate='R$ %{text:,.0f}',
+                textposition='outside'
             )
-            vendas_dia.columns = ["data", "valor"]
 
-        fig = px.bar(
-            vendas_dia,
-            x="data",
-            y="valor",
-            text="valor",
-            title="Faturamento por Dia",
-            color_discrete_sequence=["#7c3aed"]
-        )
+            fig.update_layout(
+                plot_bgcolor="#020617",
+                paper_bgcolor="#020617",
+                font=dict(color="white")
+            )
 
-        fig.update_traces(
-            texttemplate='R$ %{text:,.0f}',
-            textposition='outside'
-        )
-
-        fig.update_layout(
-            plot_bgcolor="#020617",
-            paper_bgcolor="#020617",
-            font=dict(color="white")
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.warning(f"Erro ao processar gráfico de faturamento: {e}")
 
         # TOP 10 PRODUTOS POR RECEITA
-        top_produtos = receita_produto.sort_values(ascending=False).head(10).reset_index()
-        top_produtos.columns = ["item_id", "valor"]
+        try:
+            top_produtos = receita_produto.sort_values(ascending=False).head(10).reset_index()
+            top_produtos.columns = ["item_id", "valor"]
 
-        fig2 = px.bar(
-            top_produtos,
-            x="item_id",
-            y="valor",
-            text="valor",
-            title="Top 10 Produtos por Receita",
-            color_discrete_sequence=["#7c3aed"]
-        )
+            fig2 = px.bar(
+                top_produtos,
+                x="item_id",
+                y="valor",
+                text="valor",
+                title="Top 10 Produtos por Receita",
+                color_discrete_sequence=["#7c3aed"]
+            )
 
-        fig2.update_traces(
-            texttemplate='R$ %{text:,.0f}',
-            textposition='outside'
-        )
+            fig2.update_traces(
+                texttemplate='R$ %{text:,.0f}',
+                textposition='outside'
+            )
 
-        fig2.update_layout(
-            plot_bgcolor="#020617",
-            paper_bgcolor="#020617",
-            font=dict(color="white")
-        )
+            fig2.update_layout(
+                plot_bgcolor="#020617",
+                paper_bgcolor="#020617",
+                font=dict(color="white")
+            )
 
-        st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, use_container_width=True)
+        except Exception as e:
+            st.warning(f"Erro ao processar top 10 produtos: {e}")
 
         # CURVA PARETO
-        pareto = receita_produto.sort_values(ascending=False).reset_index()
+        try:
+            pareto = receita_produto.sort_values(ascending=False).reset_index()
 
-        pareto.columns = ["item_id", "receita"]
+            pareto.columns = ["item_id", "receita"]
 
-        pareto["pct"] = pareto["receita"] / pareto["receita"].sum()
+            pareto["pct"] = pareto["receita"] / pareto["receita"].sum()
 
-        pareto["pct_acum"] = pareto["pct"].cumsum()
+            pareto["pct_acum"] = pareto["pct"].cumsum()
 
-        fig3 = px.bar(
-            pareto.head(20),
-            x="item_id",
-            y="receita",
-            title="Pareto de Produtos (80/20)",
-            color_discrete_sequence=["#7c3aed"]
-        )
+            fig3 = px.bar(
+                pareto.head(20),
+                x="item_id",
+                y="receita",
+                title="Pareto de Produtos (80/20)",
+                color_discrete_sequence=["#7c3aed"]
+            )
 
-        fig3.update_layout(
-            plot_bgcolor="#020617",
-            paper_bgcolor="#020617",
-            font=dict(color="white")
-        )
+            fig3.update_layout(
+                plot_bgcolor="#020617",
+                paper_bgcolor="#020617",
+                font=dict(color="white")
+            )
 
-        st.plotly_chart(fig3, use_container_width=True)
+            st.plotly_chart(fig3, use_container_width=True)
+        except Exception as e:
+            st.warning(f"Erro ao processar Pareto: {e}")
 
         # CURVA ABC
         st.subheader("Curva ABC Produtos")
 
-        abc = receita_produto.sort_values(ascending=False).reset_index()
+        try:
+            abc = receita_produto.sort_values(ascending=False).reset_index()
 
-        abc.columns = ["item_id", "receita"]
+            abc.columns = ["item_id", "receita"]
 
-        abc["pct"] = abc["receita"] / abc["receita"].sum()
+            abc["pct"] = abc["receita"] / abc["receita"].sum()
 
-        abc["pct_acum"] = abc["pct"].cumsum()
+            abc["pct_acum"] = abc["pct"].cumsum()
 
-        def classe(p):
-            if p <= 0.8:
-                return "A"
-            elif p <= 0.95:
-                return "B"
-            else:
-                return "C"
+            def classe(p):
+                if p <= 0.8:
+                    return "A"
+                elif p <= 0.95:
+                    return "B"
+                else:
+                    return "C"
 
-        abc["classe"] = abc["pct_acum"].apply(classe)
+            abc["classe"] = abc["pct_acum"].apply(classe)
 
-        st.dataframe(
-            abc.head(30).style.set_properties(**{
-                "background-color": "#020617",
-                "color": "white",
-                "border-color": "#374151"
-            }),
-            use_container_width=True
-        )
+            st.dataframe(
+                abc.head(30).style.set_properties(**{
+                    "background-color": "#020617",
+                    "color": "white",
+                    "border-color": "#374151"
+                }),
+                use_container_width=True
+            )
+        except Exception as e:
+            st.warning(f"Erro ao processar classificação ABC: {e}")
 
     else:
 
