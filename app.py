@@ -9,59 +9,41 @@ st.set_page_config(page_title="Dashboard Mercado Livre", layout="wide")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ESTILO
 st.markdown("""
 <style>
-
 .stApp {
     background: radial-gradient(circle at top, #1f2937, #020617);
     color: white;
 }
-
 h1, h2, h3 {
     color: white;
 }
-
 .stButton > button {
     background-color: #6d28d9;
     color: white;
     border-radius: 8px;
     border: none;
-    padding: 10px 20px;
 }
-
 .stButton > button:hover {
     background-color: #7c3aed;
 }
-
 [data-testid="stMetricValue"] {
     color: #a855f7;
 }
-
-.stProgress > div > div > div > div {
-    background-color: #7c3aed;
-}
-
 hr {
     border-color: #374151;
 }
-
 </style>
 """, unsafe_allow_html=True)
 
-# HEADER
-col_logo, col_title = st.columns([1, 6])
-
+col_logo, col_title = st.columns([1,6])
 with col_logo:
     logo_path = os.path.join(BASE_DIR, "mercadolivre_logo.png")
     if os.path.exists(logo_path):
         st.image(logo_path, width=260)
 
 with col_title:
-    st.markdown(
-        "<h1 style='margin-top:10px;'>Dashboard Mercado Livre</h1>",
-        unsafe_allow_html=True
-    )
+    st.markdown("<h1 style='margin-top:10px;'>Dashboard Mercado Livre</h1>", unsafe_allow_html=True)
 
 st.divider()
 
@@ -80,64 +62,57 @@ if "logado" not in st.session_state:
     st.session_state.logado = False
 
 if not st.session_state.logado:
-
     st.subheader("Login")
-
     usuario = st.text_input("Usuário")
     senha = st.text_input("Senha", type="password")
 
     if st.button("Entrar"):
-
         if usuario in USERS and USERS[usuario] == senha:
             st.session_state.logado = True
             st.rerun()
-
         else:
             st.error("Usuário ou senha inválidos")
 
-# DASHBOARD
 else:
-
-    ontem = datetime.today() - timedelta(days=1)
-
-    data_inicial, data_final = st.date_input(
-        "Período",
-        value=(ontem, ontem)
-    )
-
-    st.divider()
-
-    if st.button("Executar Processamento"):
-
-        st.info("Iniciando processamento...")
-
-        try:
-            # Processar cada dia
-            data_atual = data_inicial
-            while data_atual <= data_final:
-                data_str = data_atual.strftime("%Y-%m-%d")
-                st.info(f"Processando: {data_str}")
-                pipeline(data_str)
-                data_atual += timedelta(days=1)
-            
+    # Logout
+    col_spacer, col_logout = st.columns([10, 1])
+    with col_logout:
+        if st.button("Logout"):
+            st.session_state.logado = False
             st.cache_data.clear()
-            st.success("Processamento finalizado")
             st.rerun()
-        except Exception as e:
-            st.error(f"Erro no processamento: {str(e)}")
 
     st.divider()
 
-    dfs = []
+    # Período
+    ontem = datetime.today() - timedelta(days=1)
+    data_inicial, data_final = st.date_input("Período", value=(ontem, ontem))
 
+    st.divider()
+
+    # Botão de processamento
+    if st.button("Executar Processamento", use_container_width=True):
+        with st.spinner("⏳ Processando..."):
+            try:
+                data_atual = data_inicial
+                while data_atual <= data_final:
+                    pipeline(data_atual.strftime("%Y-%m-%d"))
+                    data_atual += timedelta(days=1)
+                st.cache_data.clear()
+                st.success("✅ Processamento concluído!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro: {str(e)}")
+
+    st.divider()
+
+    # Carregar dados
+    dfs = []
     data_atual = data_inicial
 
     while data_atual <= data_final:
-
         arquivo = os.path.join(
-            BASE_DIR,
-            "data",
-            "consolidado",
+            BASE_DIR, "data", "consolidado",
             f"consolidado_{data_atual.strftime('%Y-%m-%d')}.xlsx"
         )
 
@@ -148,245 +123,53 @@ else:
 
         data_atual += timedelta(days=1)
 
+    # Dashboard
     if dfs:
-
         df = pd.concat(dfs, ignore_index=True)
-
         df["sale_date"] = pd.to_datetime(df["sale_date"])
 
-        # Usar valor_liquido se existir, senão calcular receita simples
-        try:
-            if "valor_liquido" in df.columns and len(df) > 0:
-                faturamento = float(df["valor_liquido"].sum())
-                receita_produto = df.groupby("item_id")["valor_liquido"].sum()
-                receita_pedido = float(df.groupby("order_id")["valor_liquido"].sum().mean())
-            else:
-                df["receita"] = df["unit_price"] * df["quantity"]
-                faturamento = float(df["receita"].sum())
-                receita_produto = df.groupby("item_id")["receita"].sum()
-                receita_pedido = float(df.groupby("order_id")["receita"].sum().mean())
-        except Exception as e:
-            print(f"Erro ao calcular métricas: {e}")
-            faturamento = 0
-            receita_produto = pd.Series()
-            receita_pedido = 0
-
+        # KPIs
+        faturamento = (df["quantity"] * df["unit_price"]).sum()
+        margem_total = df["margem"].sum()
         pedidos = df["order_id"].nunique()
-
         ticket = faturamento / pedidos if pedidos > 0 else 0
+        margem_pct_media = df["margem_pct"].mean()
 
-        # Produto mais vendido com tratamento robusto
-        try:
-            if len(df) > 0:
-                vendas_por_produto = df.groupby("item_id")["quantity"].sum()
-                produto_mais_vendido = vendas_por_produto.idxmax() if len(vendas_por_produto) > 0 else "N/A"
-            else:
-                produto_mais_vendido = "N/A"
-        except:
-            produto_mais_vendido = "N/A"
-
-        top10 = receita_produto.sort_values(ascending=False).head(10).sum()
-        pct_top10 = (top10 / faturamento) * 100 if faturamento > 0 else 0
-
-        col1, col2, col3, col4, col5, col6 = st.columns(6)
-
+        col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("Faturamento", f"R$ {faturamento:,.2f}")
-        col2.metric("Pedidos", pedidos)
-        col3.metric("Ticket Médio", f"R$ {ticket:,.2f}")
-        col4.metric("Receita por Pedido", f"R$ {receita_pedido:,.2f}")
-        col5.metric("% Receita Top 10", f"{pct_top10:.2f}%")
-        col6.metric("Produto Mais Vendido", produto_mais_vendido)
+        col2.metric("Margem", f"R$ {margem_total:,.2f}")
+        col3.metric("Pedidos", int(pedidos))
+        col4.metric("Ticket Médio", f"R$ {ticket:,.2f}")
+        col5.metric("Margem %", f"{margem_pct_media:.1f}%")
 
         st.divider()
 
-        # ANÁLISES ADICIONAIS
-        col_status, col_margin = st.columns(2)
-        
-        with col_status:
-            st.subheader("Status dos Pedidos")
-            try:
-                if "status_gerencial" in df.columns:
-                    status_count = df["status_gerencial"].value_counts()
-                    fig_status = px.pie(
-                        values=status_count.values,
-                        names=status_count.index,
-                        title="Distribuição por Status"
-                    )
-                    fig_status.update_layout(
-                        plot_bgcolor="#020617",
-                        paper_bgcolor="#020617",
-                        font=dict(color="white")
-                    )
-                    st.plotly_chart(fig_status, use_container_width=True)
-            except Exception as e:
-                st.warning(f"Não foi possível carregar status")
-        
-        with col_margin:
-            st.subheader("Análise de Custos")
-            try:
-                if all(col in df.columns for col in ["sale_fee_net", "frete_regra_calculada", "ads_rateado"]):
-                    custos_totais = {
-                        "Taxa ML": float(df["sale_fee_net"].sum()),
-                        "Frete": float(df["frete_regra_calculada"].sum()),
-                        "Ads": float(df["ads_rateado"].sum())
-                    }
-                    fig_custos = px.bar(
-                        x=list(custos_totais.keys()),
-                        y=list(custos_totais.values()),
-                        title="Total de Custos",
-                        color_discrete_sequence=["#7c3aed"]
-                    )
-                    fig_custos.update_layout(
-                        plot_bgcolor="#020617",
-                        paper_bgcolor="#020617",
-                        font=dict(color="white"),
-                        xaxis_title="Tipo de Custo",
-                        yaxis_title="Valor (R$)"
-                    )
-                    st.plotly_chart(fig_custos, use_container_width=True)
-            except Exception as e:
-                st.warning(f"Não foi possível carregar análise de custos")
+        # Gráfico: Faturamento por dia
+        vendas_dia = df.groupby(df["sale_date"].dt.date).agg({
+            "quantity": "sum",
+            "unit_price": lambda x: (x * df.loc[x.index, "quantity"]).sum() / df.loc[x.index, "quantity"].sum() if df.loc[x.index, "quantity"].sum() > 0 else 0,
+            "margem": "sum"
+        }).reset_index()
+        vendas_dia.columns = ["data", "quantidade", "preco_medio", "margem"]
+        vendas_dia["faturamento"] = vendas_dia["quantidade"] * vendas_dia["preco_medio"]
 
-        st.divider()
-        
-        # FATURAMENTO POR DIA
-        try:
-            if "valor_liquido" in df.columns:
-                vendas_dia = (
-                    df.groupby(df["sale_date"].dt.date)["valor_liquido"]
-                    .sum()
-                    .reset_index()
-                )
-                vendas_dia.columns = ["data", "valor"]
-            else:
-                vendas_dia = (
-                    df.groupby(df["sale_date"].dt.date)["receita"]
-                    .sum()
-                    .reset_index()
-                )
-                vendas_dia.columns = ["data", "valor"]
+        fig1 = px.bar(vendas_dia, x="data", y="faturamento", text="faturamento",
+                     title="Faturamento por Dia", color_discrete_sequence=["#7c3aed"])
+        fig1.update_traces(texttemplate='R$ %{text:,.0f}', textposition='outside')
+        fig1.update_layout(plot_bgcolor="#020617", paper_bgcolor="#020617", font=dict(color="white"))
+        st.plotly_chart(fig1, use_container_width=True)
 
-            fig = px.bar(
-                vendas_dia,
-                x="data",
-                y="valor",
-                text="valor",
-                title="Faturamento por Dia",
-                color_discrete_sequence=["#7c3aed"]
-            )
+        # Gráfico: Top 10 produtos
+        top_produtos = df.groupby("item_id")["margem"].sum().sort_values(ascending=False).head(10).reset_index()
+        fig2 = px.bar(top_produtos, x="item_id", y="margem", text="margem",
+                     title="Top 10 Produtos por Margem", color_discrete_sequence=["#7c3aed"])
+        fig2.update_traces(texttemplate='R$ %{text:,.0f}', textposition='outside')
+        fig2.update_layout(plot_bgcolor="#020617", paper_bgcolor="#020617", font=dict(color="white"))
+        st.plotly_chart(fig2, use_container_width=True)
 
-            fig.update_traces(
-                texttemplate='R$ %{text:,.0f}',
-                textposition='outside'
-            )
-
-            fig.update_layout(
-                plot_bgcolor="#020617",
-                paper_bgcolor="#020617",
-                font=dict(color="white")
-            )
-
-            st.plotly_chart(fig, use_container_width=True)
-        except Exception as e:
-            st.warning(f"Erro ao processar gráfico de faturamento: {e}")
-
-        # TOP 10 PRODUTOS POR RECEITA
-        try:
-            top_produtos = receita_produto.sort_values(ascending=False).head(10).reset_index()
-            top_produtos.columns = ["item_id", "valor"]
-
-            fig2 = px.bar(
-                top_produtos,
-                x="item_id",
-                y="valor",
-                text="valor",
-                title="Top 10 Produtos por Receita",
-                color_discrete_sequence=["#7c3aed"]
-            )
-
-            fig2.update_traces(
-                texttemplate='R$ %{text:,.0f}',
-                textposition='outside'
-            )
-
-            fig2.update_layout(
-                plot_bgcolor="#020617",
-                paper_bgcolor="#020617",
-                font=dict(color="white")
-            )
-
-            st.plotly_chart(fig2, use_container_width=True)
-        except Exception as e:
-            st.warning(f"Erro ao processar top 10 produtos: {e}")
-
-        # CURVA PARETO
-        try:
-            pareto = receita_produto.sort_values(ascending=False).reset_index()
-
-            pareto.columns = ["item_id", "receita"]
-
-            pareto["pct"] = pareto["receita"] / pareto["receita"].sum()
-
-            pareto["pct_acum"] = pareto["pct"].cumsum()
-
-            fig3 = px.bar(
-                pareto.head(20),
-                x="item_id",
-                y="receita",
-                title="Pareto de Produtos (80/20)",
-                color_discrete_sequence=["#7c3aed"]
-            )
-
-            fig3.update_layout(
-                plot_bgcolor="#020617",
-                paper_bgcolor="#020617",
-                font=dict(color="white")
-            )
-
-            st.plotly_chart(fig3, use_container_width=True)
-        except Exception as e:
-            st.warning(f"Erro ao processar Pareto: {e}")
-
-        # CURVA ABC
-        st.subheader("Curva ABC Produtos")
-
-        try:
-            abc = receita_produto.sort_values(ascending=False).reset_index()
-
-            abc.columns = ["item_id", "receita"]
-
-            abc["pct"] = abc["receita"] / abc["receita"].sum()
-
-            abc["pct_acum"] = abc["pct"].cumsum()
-
-            def classe(p):
-                if p <= 0.8:
-                    return "A"
-                elif p <= 0.95:
-                    return "B"
-                else:
-                    return "C"
-
-            abc["classe"] = abc["pct_acum"].apply(classe)
-
-            st.dataframe(
-                abc.head(30).style.set_properties(**{
-                    "background-color": "#020617",
-                    "color": "white",
-                    "border-color": "#374151"
-                }),
-                use_container_width=True
-            )
-        except Exception as e:
-            st.warning(f"Erro ao processar classificação ABC: {e}")
+        # Tabela de dados
+        st.subheader("Dados Completos")
+        st.dataframe(df, use_container_width=True, height=500)
 
     else:
-
         st.warning("Nenhum relatório encontrado. Execute o processamento.")
-
-    st.divider()
-
-    if st.button("Logout"):
-
-        st.session_state.logado = False
-        st.rerun()
