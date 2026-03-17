@@ -165,6 +165,10 @@ def processar_order(session, order_id, token, billing_map):
     sale_date = order.get("date_created")
     shipment_id = (order.get("shipping") or {}).get("id")
     
+    # DEBUG - Log a cada 50 orders processadas
+    if order_id % 50 == 0:
+        print(f"   📊 Order {order_id}: sale_date={sale_date}, items={len(order.get('order_items', []))}")
+    
     # Buscar desconto de cupom
     desconto = 0
     for payment in order.get("payments", []):
@@ -313,13 +317,16 @@ def pipeline(data):
     
     # 1. BUSCAR ORDERS
     try:
+        print(f"🔑 Token obtido: {token[:20]}..." if token else "❌ Token vazio!")
         order_ids = buscar_orders(session, data, token)
         
         if not order_ids:
             print("⚠️ Nenhuma order encontrada para este período")
             return
     except Exception as e:
-        print(f"❌ Erro ao buscar orders: {e}")
+        print(f"❌ ERRO CRÍTICO ao buscar orders: {e}")
+        import traceback
+        traceback.print_exc()
         return
     
     # 2. BUSCAR BILLING
@@ -434,6 +441,11 @@ def pipeline(data):
     
     # 7. SALVAR ARQUIVO
     try:
+        print(f"\n💾 Salvando {len(df)} linhas em Excel...")
+        print(f"   Colunas: {df.columns.tolist()}")
+        print(f"   Primeiras 3 linhas:")
+        print(df.head(3).to_string())
+        
         output_path = os.path.join(OUTPUT_DIR, f"consolidado_{data}.xlsx")
         df.to_excel(output_path, index=False)
         
