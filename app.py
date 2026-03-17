@@ -154,17 +154,20 @@ else:
 
         df["sale_date"] = pd.to_datetime(df["sale_date"])
 
-        df["receita"] = df["unit_price"] * df["quantity"]
-
-        faturamento = df["receita"].sum()
+        # Usar valor_liquido se existir, senão calcular receita simples
+        if "valor_liquido" in df.columns:
+            faturamento = df["valor_liquido"].sum()
+            receita_produto = df.groupby("item_id")["valor_liquido"].sum()
+            receita_pedido = df.groupby("order_id")["valor_liquido"].sum().mean()
+        else:
+            df["receita"] = df["unit_price"] * df["quantity"]
+            faturamento = df["receita"].sum()
+            receita_produto = df.groupby("item_id")["receita"].sum()
+            receita_pedido = df.groupby("order_id")["receita"].sum().mean()
 
         pedidos = df["order_id"].nunique()
 
         ticket = faturamento / pedidos if pedidos > 0 else 0
-
-        receita_produto = df.groupby("item_id")["receita"].sum()
-
-        receita_pedido = df.groupby("order_id")["receita"].sum().mean()
 
         # Produto mais vendido com tratamento robusto
         try:
@@ -190,18 +193,71 @@ else:
 
         st.divider()
 
+        # ANÁLISES ADICIONAIS
+        col_status, col_margin = st.columns(2)
+        
+        with col_status:
+            st.subheader("Status dos Pedidos")
+            if "status_gerencial" in df.columns:
+                status_count = df["status_gerencial"].value_counts()
+                fig_status = px.pie(
+                    values=status_count.values,
+                    names=status_count.index,
+                    title="Distribuição por Status"
+                )
+                fig_status.update_layout(
+                    plot_bgcolor="#020617",
+                    paper_bgcolor="#020617",
+                    font=dict(color="white")
+                )
+                st.plotly_chart(fig_status, use_container_width=True)
+        
+        with col_margin:
+            st.subheader("Análise de Custos")
+            if all(col in df.columns for col in ["sale_fee_net", "frete_regra_calculada", "ads_rateado"]):
+                custos_totais = {
+                    "Taxa ML": df["sale_fee_net"].sum(),
+                    "Frete": df["frete_regra_calculada"].sum(),
+                    "Ads": df["ads_rateado"].sum()
+                }
+                fig_custos = px.bar(
+                    x=list(custos_totais.keys()),
+                    y=list(custos_totais.values()),
+                    title="Total de Custos",
+                    color_discrete_sequence=["#7c3aed"]
+                )
+                fig_custos.update_layout(
+                    plot_bgcolor="#020617",
+                    paper_bgcolor="#020617",
+                    font=dict(color="white"),
+                    xaxis_title="Tipo de Custo",
+                    yaxis_title="Valor (R$)"
+                )
+                st.plotly_chart(fig_custos, use_container_width=True)
+
+        st.divider()
+        
         # FATURAMENTO POR DIA
-        vendas_dia = (
-            df.groupby(df["sale_date"].dt.date)["receita"]
-            .sum()
-            .reset_index()
-        )
+        if "valor_liquido" in df.columns:
+            vendas_dia = (
+                df.groupby(df["sale_date"].dt.date)["valor_liquido"]
+                .sum()
+                .reset_index()
+            )
+            vendas_dia.columns = ["data", "valor"]
+        else:
+            vendas_dia = (
+                df.groupby(df["sale_date"].dt.date)["receita"]
+                .sum()
+                .reset_index()
+            )
+            vendas_dia.columns = ["data", "valor"]
 
         fig = px.bar(
             vendas_dia,
-            x="sale_date",
-            y="receita",
-            text="receita",
+            x="data",
+            y="valor",
+            text="valor",
             title="Faturamento por Dia",
             color_discrete_sequence=["#7c3aed"]
         )
@@ -220,19 +276,14 @@ else:
         st.plotly_chart(fig, use_container_width=True)
 
         # TOP 10 PRODUTOS POR RECEITA
-        top_produtos = (
-            df.groupby("item_id")["receita"]
-            .sum()
-            .sort_values(ascending=False)
-            .head(10)
-            .reset_index()
-        )
+        top_produtos = receita_produto.sort_values(ascending=False).head(10).reset_index()
+        top_produtos.columns = ["item_id", "valor"]
 
         fig2 = px.bar(
             top_produtos,
             x="item_id",
-            y="receita",
-            text="receita",
+            y="valor",
+            text="valor",
             title="Top 10 Produtos por Receita",
             color_discrete_sequence=["#7c3aed"]
         )
