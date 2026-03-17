@@ -11,7 +11,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================
 # TOKEN MANAGEMENT
 # =============================
-TOKEN_FILE = "meli_token.json"
 CLIENT_ID = "1668515020275408"
 CLIENT_SECRET = "jmI2YhNb6xmBEV4AZtW1UrLHyAGLdU0L"
 AUTH_URL = "https://api.mercadolibre.com/oauth/token"
@@ -19,14 +18,17 @@ AUTH_URL = "https://api.mercadolibre.com/oauth/token"
 def renovar_token():
     """Renova o token usando refresh_token"""
     try:
-        with open(TOKEN_FILE, "r") as f:
-            token_data = json.load(f)
+        refresh_token = st.secrets.get("REFRESH_TOKEN")
+        
+        if not refresh_token:
+            st.error("❌ REFRESH_TOKEN não configurado nos secrets")
+            return None
 
         payload = {
             "grant_type": "refresh_token",
             "client_id": CLIENT_ID,
             "client_secret": CLIENT_SECRET,
-            "refresh_token": token_data["refresh_token"]
+            "refresh_token": refresh_token
         }
 
         response = requests.post(AUTH_URL, data=payload, timeout=10)
@@ -41,39 +43,24 @@ def renovar_token():
             "created_at": int(time.time())
         }
 
-        with open(TOKEN_FILE, "w") as f:
-            json.dump(token, f, indent=2)
-
         return data["access_token"]
     except Exception as e:
-        st.error(f"Erro ao renovar token: {e}")
+        st.error(f"❌ Erro ao renovar token: {str(e)}")
         return None
 
-def token_expirado():
-    """Verifica se o token expirou"""
-    try:
-        if not os.path.exists(TOKEN_FILE):
-            return True
-
-        with open(TOKEN_FILE, "r") as f:
-            token_data = json.load(f)
-
-        expiracao = token_data["created_at"] + token_data["expires_in"] - 60
-        return time.time() > expiracao
-    except:
-        return True
-
 def get_token():
-    """Obtém o token válido"""
-    if token_expirado():
-        return renovar_token()
-
+    """Obtém o token válido dos secrets"""
     try:
-        with open(TOKEN_FILE, "r") as f:
-            token_data = json.load(f)
-        return token_data["access_token"]
-    except:
-        st.error("Token não encontrado. Configure meli_token.json")
+        access_token = st.secrets.get("ACCESS_TOKEN")
+        
+        if access_token:
+            return access_token
+        
+        # Se não tiver access token, tenta renovar
+        return renovar_token()
+        
+    except Exception as e:
+        st.error(f"❌ Erro ao obter token: {str(e)}")
         return None
 
 # =============================
