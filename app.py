@@ -7,7 +7,74 @@ import os
 import io
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from auth import get_token
+
+# =============================
+# TOKEN MANAGEMENT
+# =============================
+TOKEN_FILE = "meli_token.json"
+CLIENT_ID = "1668515020275408"
+CLIENT_SECRET = "jmI2YhNb6xmBEV4AZtW1UrLHyAGLdU0L"
+AUTH_URL = "https://api.mercadolibre.com/oauth/token"
+
+def renovar_token():
+    """Renova o token usando refresh_token"""
+    try:
+        with open(TOKEN_FILE, "r") as f:
+            token_data = json.load(f)
+
+        payload = {
+            "grant_type": "refresh_token",
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "refresh_token": token_data["refresh_token"]
+        }
+
+        response = requests.post(AUTH_URL, data=payload, timeout=10)
+        response.raise_for_status()
+
+        data = response.json()
+
+        token = {
+            "access_token": data["access_token"],
+            "refresh_token": data["refresh_token"],
+            "expires_in": data["expires_in"],
+            "created_at": int(time.time())
+        }
+
+        with open(TOKEN_FILE, "w") as f:
+            json.dump(token, f, indent=2)
+
+        return data["access_token"]
+    except Exception as e:
+        st.error(f"Erro ao renovar token: {e}")
+        return None
+
+def token_expirado():
+    """Verifica se o token expirou"""
+    try:
+        if not os.path.exists(TOKEN_FILE):
+            return True
+
+        with open(TOKEN_FILE, "r") as f:
+            token_data = json.load(f)
+
+        expiracao = token_data["created_at"] + token_data["expires_in"] - 60
+        return time.time() > expiracao
+    except:
+        return True
+
+def get_token():
+    """Obtém o token válido"""
+    if token_expirado():
+        return renovar_token()
+
+    try:
+        with open(TOKEN_FILE, "r") as f:
+            token_data = json.load(f)
+        return token_data["access_token"]
+    except:
+        st.error("Token não encontrado. Configure meli_token.json")
+        return None
 
 # =============================
 # CONFIGURAÇÕES
@@ -300,6 +367,9 @@ def gerar_consolidado(data):
     """Gera consolidado completo com 22 colunas"""
     
     token = get_token()
+    if not token:
+        return None
+    
     session = requests.Session()
     
     # 1. Buscar orders
