@@ -447,6 +447,8 @@ def pipeline(data):
 
 
 if __name__ == "__main__":
-    from datetime import datetime
-    data_teste = datetime.today().strftime("%Y-%m-%d")
-    pipeline(data_teste)
+    # Descomentar apenas para testes locais
+    pass
+    # from datetime import datetime
+    # data_teste = datetime.today().strftime("%Y-%m-%d")
+    # pipeline(data_teste)
